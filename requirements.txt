@@ -1,0 +1,5 @@
+aws
+boto3
+pandas
+requests
+backoff
