@@ -1,6 +1,6 @@
 # Requeue a pipeline run ICAv2
 
-## You can requeue run 
+## You can requeue pipeline runs 
 - by specifying the user_reference/analysis_id and the corresponding project_name/project_id along with your [API_KEY file](https://help.ica.illumina.com/account-management/am-iam#api-keys)
 
 Below is an example command line:
