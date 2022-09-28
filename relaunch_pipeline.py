@@ -503,10 +503,9 @@ def main():
     pipeline_id = get_pipeline_id(pipeline_name, my_api_key,project_name)
     my_tags = [pipeline_run_name]
     my_storage_analysis_id = get_analysis_storage_id(my_api_key, args.storage_size)
-    ### add sleep to avoid pipeline getting stuck in AWAITINGINPUT state? ensure that json file is present?
+    ### add sleep to avoid pipeline getting stuck in AWAITINGINPUT state? 
     time.sleep(5)
     time_now = str(dt.now())
-    #sys.stderr.write(time_now  + "\n")
     print(f"{time_now} Launching pipeline analysis for {pipeline_run_name}")
     test_launch = launch_pipeline_analysis_cwl(my_api_key, project_id, pipeline_id, my_data_inputs, my_params,my_tags, my_storage_analysis_id, pipeline_run_name,workflow_language)
     pipeline_analysis_id = test_launch['id']
