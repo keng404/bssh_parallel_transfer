@@ -12,3 +12,6 @@ python3 relaunch_pipeline.py --user_reference <USER_RUN_REFERENCE> --project_nam
 - Any pre-requisites/modules you need should be found [here](https://github.com/keng404/bssh_parallel_transfer/blob/master/requirements.txt)
 - If you have any spaces or special characters in your user_reference, project_name, or api_key, you may want to wrap those arguments in single quotes.
   - to be fair this scenario needs to be tested more rigorously. Underscores and dashes should be fine.   
+
+# limitations
+This script will not work for any CWL-based pipelines where users have used an inputJSON to provide inputData and parameters
