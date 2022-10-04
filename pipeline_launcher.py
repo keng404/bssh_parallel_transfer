@@ -204,11 +204,37 @@ def list_data(api_key,sample_query,project_id):
         raise ValueError(f"Could not get results for project: {project_id} looking for filename: {sample_query}")
     return datum
 ############
-def list_project_analyses(api_key,project_id,max_retries=3):
+def get_project_analysis(api_key,project_id,analysis_id,max_retries = 5):
+    api_base_url = ICA_BASE_URL + "/rest"
+    endpoint = f"/api/projects/{project_id}/analyses/{analysis_id}"
+    analysis_metadata = None
+    full_url = api_base_url + endpoint  ############ create header
+    headers = CaseInsensitiveDict()
+    headers['Accept'] = 'application/vnd.illumina.v3+json'
+    headers['Content-Type'] = 'application/vnd.illumina.v3+json'
+    headers['X-API-Key'] = api_key
+    try:
+        response = None
+        response_code = 404
+        num_tries = 0
+        while response_code != 200 and num_tries < max_retries:
+            num_tries = num_tries + 1
+            response = requests.get(full_url, headers=headers)
+            response_code = response.status_code
+            time.sleep(1)
+        if num_tries == max_retries and response_code != 200:
+            sys.stderr.write(f"Could not get metadata for analysis: {analysis_id}\n")
+        else:
+            analysis_metadata = response.json()
+    except:
+        sys.stderr.write(f"Could not get metadata for analysis: {analysis_id}\n")
+    return analysis_metadata
+def list_project_analyses(api_key,project_id,max_retries = 5):
     # List all analyses in a project
     pageOffset = 0
     pageSize = 1000
     page_number = 0
+    totalRecords = 0
     number_of_rows_to_skip = 0
     api_base_url = ICA_BASE_URL + "/rest"
     endpoint = f"/api/projects/{project_id}/analyses?pageOffset={pageOffset}&pageSize={pageSize}"
@@ -222,64 +248,29 @@ def list_project_analyses(api_key,project_id,max_retries=3):
         projectAnalysisPagedList = None
         response_code = 404
         num_tries = 0
-        while response_code != 200 and num_tries  < max_retries:
-            num_tries += 1
-            if num_tries > 1:
-                print(f"NUM_TRIES:\t{num_tries}\tTrying to get analyses  for project {project_id}")
-            sleep(random.uniform(1, 3))
+        while response_code != 200 and num_tries < max_retries:
+            num_tries = num_tries + 1
             projectAnalysisPagedList = requests.get(full_url, headers=headers)
+            response_code = projectAnalysisPagedList.status_code
+            time.sleep(1)
+        #projectAnalysisPagedList = requests.get(full_url, headers=headers)
             totalRecords = projectAnalysisPagedList.json()['totalItemCount']
-            while page_number * pageSize < totalRecords:
-                endpoint = f"/api/projects/{project_id}/analyses?pageOffset={number_of_rows_to_skip}&pageSize={pageSize}"
-                full_url = api_base_url + endpoint  ############ create header
-                projectAnalysisPagedList = requests.get(full_url, headers=headers)
-                for analysis in projectAnalysisPagedList.json()['items']:
-                    analyses_metadata.append(analysis)
-                page_number += 1
-                number_of_rows_to_skip = page_number * pageSize
+        while page_number * pageSize < totalRecords:
+            endpoint = f"/api/projects/{project_id}/analyses?pageOffset={number_of_rows_to_skip}&pageSize={pageSize}"
+            full_url = api_base_url + endpoint  ############ create header
+            projectAnalysisPagedList = requests.get(full_url, headers=headers)
+            for analysis in projectAnalysisPagedList.json()['items']:
+                analyses_metadata.append(analysis)
+            page_number += 1
+            number_of_rows_to_skip = page_number * pageSize
+            time.sleep(1)
     except:
-        raise ValueError(f"Could not get analyses for project: {project_id}")
+        sys.stderr.write(f"Could not get analyses for project: {project_id}")
+        #raise ValueError(f"Could not get analyses for project: {project_id}")
+        analyses_metadata = []
     return analyses_metadata
 ################
-##### code to launch pipeline in ICAv2
-def get_cwl_input_template(pipeline_code, api_key,project_name, fixed_input_data_fields,params_to_keep=[] , analysis_id=None):
-    project_id = get_project_id(api_key, project_name)
-    project_analyses = list_project_analyses(api_key,project_id)
-    headers = CaseInsensitiveDict()
-    headers['Accept'] = 'application/vnd.illumina.v3+json'
-    headers['Content-Type'] = 'application/vnd.illumina.v3+json'
-    headers['X-API-Key'] = api_key
-    # users can define an analysis_id of interest
-    if analysis_id is None:
-        # find most recent analysis_id for the pipeline_code that succeeeded
-        for analysis_idx,analysis in enumerate(project_analyses):
-            if analysis['pipeline']['code'] == pipeline_code and analysis['status'] == "SUCCEEDED":
-                analysis_id = analysis['id']
-                continue
-    templates = {}  # a dict that returns the templates we'll use to launch an analysis
-    api_base_url = ICA_BASE_URL + "/rest"
-    # grab the input files for the given analysis_id
-    input_endpoint = f"/api/projects/{project_id}/analyses/{analysis_id}/inputs"
-    full_input_endpoint = api_base_url + input_endpoint
-    try:
-        inputs_response = requests.get(full_input_endpoint, headers=headers)
-        input_data_example = inputs_response.json()['items']
-    except:
-        raise ValueError(f"Could not get inputs for the project analysis {analysis_id}")
-    # grab the parameters set for the given analysis_id
-    parameters_endpoint = f"/api/projects/{project_id}/analyses/{analysis_id}/configurations"
-    full_parameters_endpoint = api_base_url + parameters_endpoint
-    try:
-        parameter_response = requests.get(full_parameters_endpoint, headers=headers)
-        parameter_settings = parameter_response.json()['items']
-    except:
-        raise ValueError(f"Could not get parameters for the project analysis {analysis_id}")
-    # return both the input data template and parameter settings for this pipelineß
-    input_data_template = parse_analysis_data_input_example(input_data_example, fixed_input_data_fields)
-    parameter_settings_template = create_analysis_parameter_input_object_extended(parameter_settings,params_to_keep)
-    templates['input_data'] = input_data_template
-    templates['parameter_settings'] = parameter_settings_template
-    return templates
+
 
 
 ########################
@@ -366,7 +357,9 @@ def create_data(api_key,project_name, filename, data_type, folder_id=None, forma
     payload = {}
     payload['name'] = filename
     if filepath is not None:
-        payload['folderPath'] = filepath
+        filepath_split = filepath.split('/')
+        if len(filepath_split) > 1:
+            payload['folderPath'] = filepath
     if folder_id is not None:
         payload['folderId'] = folder_id
     if data_type not in ["FILE", "FOLDER"]:
@@ -375,12 +368,83 @@ def create_data(api_key,project_name, filename, data_type, folder_id=None, forma
     if format_code is not None:
         payload['formatCode'] = format_code
     request_params = {"method": "post", "url": full_url, "headers": headers, "data": json.dumps(payload)}
-    response = request_with_retry(**request_params)
-    #response = requests.post(full_url, headers=headers, data=json.dumps(payload))
+    #response = request_with_retry(**request_params)
+    response = requests.post(full_url, headers=headers, data=json.dumps(payload))
     if response.status_code not in [201, 400]:
         pprint(json.dumps(response.json()),indent=4)
         raise ValueError(f"Could not create data {filename}")
+    #if 'data' not in keys(response.json()):
+    pprint(json.dumps(response.json()),indent = 4)
+    #raise ValueError(f"Could not obtain data id for {filename}")
     return response.json()['data']['id']
+##### code to launch pipeline in ICAv2
+def get_cwl_input_template(pipeline_code, api_key,project_name, fixed_input_data_fields,params_to_keep=[] , analysis_id=None,api_key_file=None):
+    project_id = get_project_id(api_key, project_name)
+    project_analyses = list_project_analyses(api_key,project_id)
+    headers = CaseInsensitiveDict()
+    headers['Accept'] = 'application/vnd.illumina.v3+json'
+    headers['Content-Type'] = 'application/vnd.illumina.v3+json'
+    headers['X-API-Key'] = api_key
+    # users can define an analysis_id of interest
+    if analysis_id is None:
+        # find most recent analysis_id for the pipeline_code that succeeeded
+        for analysis_idx,analysis in enumerate(project_analyses):
+            if analysis['pipeline']['code'] == pipeline_code and analysis['status'] == "SUCCEEDED":
+                analysis_id = analysis['id']
+                continue
+    templates = {}  # a dict that returns the templates we'll use to launch an analysis
+    api_base_url = ICA_BASE_URL + "/rest"
+    # grab the input files for the given analysis_id
+    input_endpoint = f"/api/projects/{project_id}/analyses/{analysis_id}/inputs"
+    full_input_endpoint = api_base_url + input_endpoint
+    if analysis_id is not None:
+        try:
+            inputs_response = requests.get(full_input_endpoint, headers=headers)
+            input_data_example = inputs_response.json()['items']
+        except:
+            raise ValueError(f"Could not get inputs for the project analysis {analysis_id}")
+    else:
+        f = open('/templates/response_1664804484317.json')
+        input_data_example = json.load(f)['items']
+        f.close()
+        for x in range(0,len(input_data_example)):
+            if input_data_example[x]['code'] == 'api_key_file':
+                new_data_id = None
+                new_data_id = create_data(api_key,project_name,api_key_file,"FILE",filepath=None,project_id =project_id)
+                if new_data_id is not None:
+                    input_data_example[x]['analysisData'][0]['dataId'] = new_data_id
+                else:
+                    raise ValueError(f"Could not find API Key file {api_key_file} in project: {project_name}\n")
+    # grab the parameters set for the given analysis_id
+    parameters_endpoint = f"/api/projects/{project_id}/analyses/{analysis_id}/configurations"
+    full_parameters_endpoint = api_base_url + parameters_endpoint
+    if analysis_id is not None:
+        try:
+            parameter_response = requests.get(full_parameters_endpoint, headers=headers)
+            parameter_settings = parameter_response.json()['items']
+        except:
+            raise ValueError(f"Could not get parameters for the project analysis {analysis_id}")
+    else:
+        f = open('/templates/response_1664804535095.json')
+        parameter_settings = json.load(f)['items']
+        f.close()
+        reconfigured_project_name = False
+        for x in range(0,len(parameter_settings)):
+            if re.search("project_name",parameter_settings[x]['name']) is not None:
+                parameter_settings[x]['values'][0] = project_name
+                reconfigured_project_name = True
+        if reconfigured_project_name is False:
+            pprint(parameter_settings,indent = 4)
+            raise ValueError(f"Could not reconfigure project name  {project_name}\n")
+
+
+
+    # return both the input data template and parameter settings for this pipelineß
+    input_data_template = parse_analysis_data_input_example(input_data_example, fixed_input_data_fields)
+    parameter_settings_template = create_analysis_parameter_input_object_extended(parameter_settings,params_to_keep)
+    templates['input_data'] = input_data_template
+    templates['parameter_settings'] = parameter_settings_template
+    return templates
 
 ### obtain temporary AWS credentials
 def get_temporary_credentials(api_key,project_name,data_id,project_id=None):
@@ -445,6 +509,8 @@ def main():
     parser.add_argument('--input_json', default=None, type=str, help="input JSON listing files from BSSH to transfer")
     parser.add_argument('--batch_size',  default='1', type=str, help="batch size of files to transfer")
     parser.add_argument('--api_key_file', default=None, type=str, help="file that contains API-Key")
+    parser.add_argument('--number_of_checks',  default=600, type=int, help="Number of Checks for this tool to perform --- i.e. number of minutes until a graceful exit (10 hours by default)")
+    parser.add_argument('--api_key', default=None, type=str, help="string that is the API-Key")
     parser.add_argument('--storage_size', default="Medium",const='Medium',nargs='?', choices=("Small","Medium","Large"), type=str, help="Storage disk size used for job")
     args, extras = parser.parse_known_args()
 #############
@@ -471,18 +537,22 @@ def main():
         raise ValueError("Please provide ICA tool name")
     ###### read in api key file
     my_api_key = None
-    if args.api_key_file is not None:
+    if args.api_key_file is not None and args.api_key is None:
         if os.path.isfile(args.api_key_file) is True:
             with open(args.api_key_file, 'r') as f:
                 my_api_key = str(f.read().strip("\n"))
+    if args.api_key is not None:
+        my_api_key =  args.api_key
     if my_api_key is None:
         raise ValueError("Need API key")
     ##### crafting job template
     project_id = get_project_id(my_api_key,project_name)
     print("Grabbing templates\n\n\n")
+    # number of checks to perform
+    max_number_of_checks = args.number_of_checks
     input_data_fields_to_keep  = ['api_key_file']
     param_fields_to_keep = [f"{tool_name}__project_name"]
-    job_templates = get_cwl_input_template(pipeline_name, my_api_key,project_name, input_data_fields_to_keep, param_fields_to_keep)
+    job_templates = get_cwl_input_template(pipeline_name, my_api_key,project_name, input_data_fields_to_keep, param_fields_to_keep,api_key_file = args.api_key_file)
 
     # open file manifest for data transfer from BSSH
     f = open(args.input_json)
@@ -497,13 +567,15 @@ def main():
     chunks = [f_range[i:i + batch_size] for i in range(0, len(f_range), batch_size)]
     slice_count = 1
     json_files = []
+    total_count = 0
     ### create subsetted JSON
     for chunk in chunks:
         filename_split = os.path.basename(my_input_json).split('.')
         filename_split[-1] = f"pt{slice_count}"
         filename_split.append("json")
         new_file = ".".join(filename_split)
-        data_slice = data[chunk[0]:chunk[-1]]
+        data_slice = data[chunk[0]:(chunk[-1]+1)]
+        total_count += len(data_slice)
         with open(new_file,"w") as f:
             for line in json.dumps(data_slice, indent=4, sort_keys=True).split("\n"):
                 print(line,file=f)
@@ -511,6 +583,7 @@ def main():
         json_files.append(new_file)
         slice_count += 1
     ### check if folder exists
+    print(f"Running transfers on {total_count} files")
     paths = ["/" + folder_name]
     num_hits = 0
     folder_id = None
@@ -523,7 +596,7 @@ def main():
         # if not, then create
         if len(projectdata_results) == 0 or num_hits == 0:
             print(f"Generating folder for {p} \n")
-            folder_id = create_data(my_api_key, project_name, p.split('/')[-1], "FOLDER", filepath=p,project_id=project_id)
+            folder_id = create_data(my_api_key, project_name, p.split('/')[-1], "FOLDER", filepath=p.split('/')[0],project_id=project_id)
         if folder_id is None:
             raise ValueError(f"Cannot find appropriate folder id for {p} in {project_name}")
     ### for each subsetted JSON file:
@@ -561,12 +634,19 @@ def main():
         pipeline_id = get_pipeline_id(pipeline_name, my_api_key,project_name)
         my_tags = [pipeline_run_name]
         my_storage_analysis_id = get_analysis_storage_id(my_api_key, args.storage_size)
-        print(f"Launching pipeline analysis for {pipeline_run_name}")
+        ### add sleep to avoid pipeline getting stuck in AWAITINGINPUT state? ensure that json file is present?
+        time.sleep(5)
+        time_now = str(dt.now())
+        #sys.stderr.write(time_now  + "\n")
+        print(f"{time_now} Launching pipeline analysis for {pipeline_run_name}")
         test_launch = launch_pipeline_analysis_cwl(my_api_key, project_id, pipeline_id, my_data_inputs1, my_params1,my_tags, my_storage_analysis_id, pipeline_run_name)
         pipeline_analysis_id = test_launch['id']
         ## store pipeline launch variables for requeue
         pipeline_launch_metadata[pipeline_analysis_id] = {"api_key":my_api_key, "project_id":project_id, "pipeline_id":pipeline_id,"input_data":my_data_inputs1,"input_parameters":my_params1,"tags":my_tags,"storage_id":my_storage_analysis_id,"run_name":pipeline_run_name}
-        print(f"Launched pipeline analysis:\t{pipeline_analysis_id}\n\n\n\n")
+        time_now = str(dt.now())
+        #sys.stderr.write(time_now  + "\n")
+        pprint(test_launch,indent =4)
+        print(f"{time_now} Launched pipeline analysis:\t{pipeline_analysis_id}\n\n\n\n")
     # write out parameter options summary
     parameter_options_summary = "parameter_options_summary.json"
     parameter_options = {}
@@ -577,34 +657,72 @@ def main():
     with open(parameter_options_summary, "w") as f:
         for line in json.dumps(parameter_options, indent=4, sort_keys=True).split("\n"):
             print(line, file=f)
+    #####################################
+    time_now = str(dt.now())
+    sys.stderr.write(time_now  + "\n")
     print('Launched all pipelines!\n\n')
     ############ monitor analysis ids and requeue if there an analysis awaiting input
-    status_for_requeue = ["AWAITINGINPUT"]
+    status_for_requeue = ["AWAITINGINPUT","FAILED","ABORTED","ABORTING"]
     analysis_ids_of_interest =  pipeline_launch_metadata.keys()
     run_finished = False
     analysis_tracker = {}
     analysis_errors_tracker = {}
-    while run_finished is False:
-        analyses_list = list_project_analyses(my_api_key)
+    number_of_checks = 0
+    analyses_list = list_project_analyses(my_api_key,project_id)
+    analysis_monitor = {}
+    while (run_finished is False) and (number_of_checks < max_number_of_checks):
+        number_of_checks = number_of_checks + 1
+        print(f"Monitor Check: {number_of_checks} of {max_number_of_checks} lookups\n")
         # for each analysis id in table, check if the analysis is SUCCESSFUL
-        for analysis_id in analysis_ids_of_interest:
-            for aidx,project_analysis in enumerate(analyses_list):
-                if project_analysis['analysis_id'] == analysis_id:
-                    if project_analysis['status'] == "SUCCEEDED":
-                        analysis_tracker[analysis_id] = "SUCCEEDED"
-                    #   update and requeue
-                    elif project_analysis['status'] not in ["SUCCEEDED","INPROGRESS","REQUESTED"]:
-                        print(f"Requeuing analysis for {project_analysis['analysis_id']}")
-                        if project_analysis['stats'] in status_for_requeue:
-                            dateTimeObj = dt.now()
-                            timestampStr = dateTimeObj.strftime("%Y%b%d_%H_%M_%S_%f")
-                            pipeline_launcher_data = pipeline_launch_metadata[project_analysis['analysis_id']]
-                            test_launch = launch_pipeline_analysis_cwl(pipeline_launcher_data['api_key'], pipeline_launcher_data['project_id'], pipeline_launcher_data['pipeline_id'],
+        # analysis_id not in list(analysis_tracker)
+        for analysis_id in list(pipeline_launch_metadata):
+            project_analysis = None
+            #while project_analysis is None:
+            print(f"Monitoring status of {analysis_id}\n")
+            project_analysis = get_project_analysis(my_api_key,project_id,analysis_id)
+            if project_analysis is None:
+                if analysis_id not in analysis_monitor.keys():
+                    time_now = str(dt.now())
+                    print(f"{time_now} Creating dummy monitor entry for {analysis_id}\n")
+                    project_analysis = {}
+                    project_analysis['status'] = "INPROGRESS"
+                    analysis_monitor[analysis_id] = project_analysis
+                else:
+                    time_now = str(dt.now())
+                    print(f"{time_now} Reverting to previous monitor entry for {analysis_id}\n")
+                    project_analysis =  analysis_monitor[analysis_id]
+            else:
+                if analysis_id not in analysis_monitor.keys():
+                    time_now = str(dt.now())
+                    print(f"{time_now} Creating  monitor entry for {analysis_id}\n")
+                    analysis_monitor[analysis_id] = {}
+                    analysis_monitor[analysis_id] = project_analysis
+                else:
+                    time_now = str(dt.now())
+                    print(f"{time_now} Updating  monitor entry for {analysis_id}\n")
+                    analysis_monitor[analysis_id] = project_analysis
+            #for aidx,project_analysis in enumerate(analyses_list):
+            #if project_analysis['id'] == analysis_id:
+            if project_analysis['status'] == "SUCCEEDED":
+                analysis_tracker[analysis_id] = "SUCCEEDED"
+            #   update and requeue if job is Failed or stuck in awaiting input
+            elif project_analysis['status'] not in ["SUCCEEDED","INPROGRESS","REQUESTED"]:
+                time_now = str(dt.now())
+                #sys.stderr.write(time_now  + "\n")
+                print(f"{time_now} Requeuing analysis for {project_analysis['id']}")
+                if project_analysis['status'] in status_for_requeue:
+                    dateTimeObj = dt.now()
+                    timestampStr = dateTimeObj.strftime("%Y%b%d_%H_%M_%S_%f")
+                    pipeline_launcher_data = pipeline_launch_metadata[project_analysis['id']]
+                    time.sleep(1)
+                    test_launch = launch_pipeline_analysis_cwl(pipeline_launcher_data['api_key'], pipeline_launcher_data['project_id'], pipeline_launcher_data['pipeline_id'],
                                                                        pipeline_launcher_data['input_data'], pipeline_launcher_data['input_parameters'], pipeline_launcher_data['tags'],
                                                                        pipeline_launcher_data['storage_id'], pipeline_launcher_data['run_name'] + "_requeue_" + timestampStr )
-                            pipeline_analysis_id = test_launch['id']
-                            print(f"Launched requeue pipeline analysis:\t{pipeline_analysis_id}\n\n\n\n")
-                            pipeline_launch_metadata[pipeline_analysis_id] = {"api_key": pipeline_launcher_data['api_key'],
+                    pipeline_analysis_id = test_launch['id']
+                    time_now = str(dt.now())
+                    #sys.stderr.write(time_now  + "\n")
+                    print(f"{time_now} Launched requeue pipeline analysis:\t{pipeline_analysis_id}\n\n\n\n")
+                    pipeline_launch_metadata[pipeline_analysis_id] = {"api_key": pipeline_launcher_data['api_key'],
                                                                               "project_id": pipeline_launcher_data['project_id'],
                                                                               "pipeline_id": pipeline_launcher_data['pipeline_id'],
                                                                               "input_data": pipeline_launcher_data['input_data'],
@@ -612,10 +730,19 @@ def main():
                                                                               "tags": pipeline_launcher_data['tags'],
                                                                               "storage_id": pipeline_launcher_data['storage_id'],
                                                                               "run_name": pipeline_launcher_data['run_name'] + "_requeue_" + timestampStr}
-                            # delete previous key
-                            pipeline_launch_metadata.pop(project_analysis['analysis_id'], None)
-                        else:
-                            analysis_errors_tracker[analysis_id] = project_analysis['status']
+                    # delete previous key
+                    pipeline_launch_metadata_copy = {}
+                    for k in list(pipeline_launch_metadata):
+                        if k != project_analysis['id']:
+                            pipeline_launch_metadata_copy[k] = pipeline_launch_metadata[k]
+                    pipeline_launch_metadata = pipeline_launch_metadata_copy
+                    #time.sleep(10)
+                else:
+                    analysis_errors_tracker[analysis_id] = project_analysis['status']
+                    #time.sleep(10)
+        #analyses_list1 = list_project_analyses(my_api_key,project_id)
+        #if len(analyses_list1) > 0 :
+        #    analyses_list = analyses_list1
         #### happy path
         if len(analysis_tracker.keys()) == len(analysis_ids_of_interest):
             run_finished = True
@@ -623,8 +750,8 @@ def main():
         ### let user know there are failed analyses
         if len(analysis_errors_tracker.keys()) > 0:
             if (len(analysis_tracker.keys()) + len(analysis_errors_tracker.keys()) )  == len(analysis_ids_of_interest):
-                raise ValueError(f"There are failed analyses for the run {run_id}")
+                print(f"There are requeued transfers for the run")
         ##################################
-        time.sleep(60)
+        #time.sleep(60)
 if __name__ == '__main__':
     main()
