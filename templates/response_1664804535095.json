@@ -1,0 +1,23 @@
+{
+  "items": [
+    {
+      "name": "bsshruns2icav2tool__run_id",
+      "multiValue": false,
+      "values": [
+        "ctdna_run_transfer_test_v1"
+      ]
+    },
+    {
+      "name": "bsshruns2icav2tool__api_key",
+      "multiValue": false,
+      "values": []
+    },
+    {
+      "name": "bsshruns2icav2tool__project_name",
+      "multiValue": false,
+      "values": [
+        "ken_test"
+      ]
+    }
+  ]
+}

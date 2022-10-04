@@ -1,0 +1,48 @@
+{
+  "items": [
+    {
+      "code": "api_key_file",
+      "analysisData": [
+        {
+          "children": [],
+          "dataId": "fil.7c7f884331ef4c21c1e608d9c3e7d489",
+          "format": {
+            "id": "eff87e43-50f6-4fb8-8a58-e23a754e4aec",
+            "timeCreated": "2021-10-29T09:44:28Z",
+            "timeModified": "2021-10-29T09:44:28Z",
+            "ownerId": "499bfe9d-85bd-4588-ba70-fbc2f664bb9e",
+            "tenantId": "9fec8354-853b-4ee5-b211-eb03e484d876",
+            "tenantName": "Illumina",
+            "code": "TXT",
+            "description": "Standard file file",
+            "mimeType": "text/plain"
+          },
+          "name": "ICAv2.isc_b.illumina-api-key.txt",
+          "dataType": "FILE"
+        }
+      ]
+    },
+    {
+      "code": "input_json",
+      "analysisData": [
+        {
+          "children": [],
+          "dataId": "fil.d43ed206c6fc42d089a608daa196d1f4",
+          "format": {
+            "id": "c908502c-1844-4a0c-b0c1-ed7858312827",
+            "timeCreated": "2021-10-29T09:44:27Z",
+            "timeModified": "2021-10-29T09:44:27Z",
+            "ownerId": "499bfe9d-85bd-4588-ba70-fbc2f664bb9e",
+            "tenantId": "9fec8354-853b-4ee5-b211-eb03e484d876",
+            "tenantName": "Illumina",
+            "code": "JSON",
+            "description": "JSON (JavaScript Object Notation) is a lightweight data-interchange format. It is easy for humans to read and write. It is easy for machines to parse and generate. It is based on a subset of the JavaScript Programming Language, Standard ECMA-262 3rd Edition - December 1999. JSON is a text format that is completely language independent but uses conventions that are familiar to programmers of the C-family of languages, including C, C++, C#, Java, JavaScript, Perl, Python, and many others.",
+            "mimeType": "application/json"
+          },
+          "name": "244075880.bcl.signedurl.pt39.json",
+          "dataType": "FILE"
+        }
+      ]
+    }
+  ]
+}
