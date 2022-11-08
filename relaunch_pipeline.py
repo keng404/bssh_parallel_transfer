@@ -445,6 +445,7 @@ def main():
         raise ValueError("Please provide ICA project name")
     pipeline_id = None
     pipeline_name = None
+    workflow_language = None
     if args.pipeline_name is not None:
         pipeline_name = args.pipeline_name
     analysis_query = None
@@ -471,6 +472,9 @@ def main():
     else:
         project_id = get_project_id(my_api_key,project_name)
     ######
+    if args.workflow_language is not None:
+        workflow_language = args.workflow_language
+
     if analysis_id is None and analysis_query is not None:
         analyses_list = list_project_analyses(my_api_key,project_id)
         for aidx,project_analysis in enumerate(analyses_list):
@@ -479,9 +483,12 @@ def main():
             if project_analysis['userReference'] == analysis_query:
                 analysis_id = project_analysis['id']
                 print(f"Found Analysis with name {analysis_query} with id : {analysis_id}\n")
-                pipeline_id = project_analysis['pipeline']['id']
-                pipeline_name = project_analysis['pipeline']['code']
-                workflow_language = project_analysis['pipeline']['language'].lower()
+                if pipeline_id is None:
+                    pipeline_id = project_analysis['pipeline']['id']
+                if pipeline_name is None:
+                    pipeline_name = project_analysis['pipeline']['code']
+                if workflow_language is None:
+                    workflow_language = project_analysis['pipeline']['language'].lower()
     if analysis_id is None:
         raise ValueError(f"Could not find analysis with user_reference : {analysis_query} in project with id : {project_id}")
     ##### crafting job template
@@ -497,15 +504,16 @@ def main():
     pipeline_run_name = analysis_metadata['userReference'] + "_requeue_" + timestampStr 
     print(f"Setting up pipeline analysis for {pipeline_run_name}")
     my_params = job_templates['parameter_settings']
-    print(my_params)
+    #print(my_params)
     my_data_inputs = job_templates['input_data']
-    print(my_data_inputs)
+    #print(my_data_inputs)
     pipeline_id = get_pipeline_id(pipeline_name, my_api_key,project_name)
     my_tags = [pipeline_run_name]
     my_storage_analysis_id = get_analysis_storage_id(my_api_key, args.storage_size)
     ### add sleep to avoid pipeline getting stuck in AWAITINGINPUT state? 
     time.sleep(5)
     time_now = str(dt.now())
+    print (f"my worklflow_language {workflow_language}")
     print(f"{time_now} Launching pipeline analysis for {pipeline_run_name}")
     test_launch = launch_pipeline_analysis_cwl(my_api_key, project_id, pipeline_id, my_data_inputs, my_params,my_tags, my_storage_analysis_id, pipeline_run_name,workflow_language)
     pipeline_analysis_id = test_launch['id']
