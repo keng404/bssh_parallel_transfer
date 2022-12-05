@@ -334,7 +334,7 @@ def launch_pipeline_analysis_cwl(api_key,project_id,pipeline_id,data_inputs,inpu
     collected_parameters["analysisInput"] = {}
     collected_parameters["analysisInput"]["objectType"] = "STRUCTURED"
     collected_parameters["analysisInput"]["inputs"] = convert_data_inputs(data_inputs)
-    collected_parameters["analysisInput"]["parameters"] = input_eparameters
+    collected_parameters["analysisInput"]["parameters"] = input_parameters
     collected_parameters["analysisInput"]["referenceDataParameters"] = []
     response = requests.post(full_url, headers = headers, data = json.dumps(collected_parameters))
     launch_details = response.json()
