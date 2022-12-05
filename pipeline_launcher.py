@@ -339,7 +339,7 @@ def launch_pipeline_analysis_cwl(api_key,project_id,pipeline_id,data_inputs,inpu
     response = requests.post(full_url, headers = headers, data = json.dumps(collected_parameters))
     launch_details = response.json()
     while response.status_code != 201:
-        activation_details_code_id = get_activation_code(api_key,projct_id,pipeline_id,data_inputs,input_parameters)
+        activation_details_code_id = get_activation_code(api_key,project_id,pipeline_id,data_inputs,input_parameters)
         collected_parameters['activationCodeDetailId'] = activation_details_code_id
         response = requests.post(full_url, headers = headers, data = json.dumps(collected_parameters))
         launch_details = response.json()
