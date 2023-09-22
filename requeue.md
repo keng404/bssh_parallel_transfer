@@ -30,7 +30,7 @@ python3 relaunch_pipeline.py --user_reference <USER_RUN_REFERENCE> --project_nam
 ```
 This command will save a API JSON template you can copy + paste to requeue a pipeline run. You can modify this template before running. As a convenience, a text file is saved with the API command for future reference.
 
-The JSON file will have two fields ```header``` and ```data``` that you can pass to the ICA API endpoints for [CWL](https://ica.illumina.com/ica/api/swagger/index.html#/Project%20Analysis/createCwlAnalysis) or [Nextflow](https://ica.illumina.com/ica/api/swagger/index.html#/Project%20Analysis/createNextflowAnalysis) analyses.
+The JSON file will have two fields, ```header``` and ```data``` that you can pass as a POST request to the ICA API endpoints for [CWL](https://ica.illumina.com/ica/api/swagger/index.html#/Project%20Analysis/createCwlAnalysis) or [Nextflow](https://ica.illumina.com/ica/api/swagger/index.html#/Project%20Analysis/createNextflowAnalysis) analyses.
 
 # Additional guidance
 - Any pre-requisites/modules you need should be found [here](https://github.com/keng404/bssh_parallel_transfer/blob/master/requirements.txt)
