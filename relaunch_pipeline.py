@@ -7,11 +7,7 @@ import subprocess
 import os
 import argparse
 import re
-import boto3
-from botocore.exceptions import ClientError
 import sys
-import retry_requests_decorator
-from retry_requests_decorator import request_with_retry,fatal_code
 from datetime import datetime as dt
 import time
 from time import sleep
@@ -31,7 +27,7 @@ def create_analysis_parameter_input_object(parameter_template):
             else:
                 param['value'] = ""
         else:
-            param['value'] = parameter['values']
+            param['multiValue'] = parameter['values']
         parameters.append(param)
     return parameters
 
@@ -50,7 +46,7 @@ def create_analysis_parameter_input_object_extended(parameter_template, params_t
                     else:
                         param['value'] = ""
                 else:
-                    param['value'] = parameter['values']
+                    param['multiValue'] = parameter['values']
             else:
                 param['value']  = ""
         else:
@@ -60,7 +56,7 @@ def create_analysis_parameter_input_object_extended(parameter_template, params_t
                 else:
                     param['value'] = ""
             else:
-                param['value'] = parameter['values']           
+                param['multiValue'] = parameter['values']           
         parameters.append(param)
     return parameters
 
@@ -137,14 +133,15 @@ def get_project_id(api_key, project_name):
     else:
         return projects[0]['id']
 #############################
-def get_pipeline_id(pipeline_code, api_key,project_name):
+def get_pipeline_id(pipeline_code, api_key,project_name,project_id=None):
     pipelines = []
     pageOffset = 0
     pageSize = 1000
     page_number = 0
     number_of_rows_to_skip = 0
     # ICA project ID
-    project_id = get_project_id(api_key,project_name)
+    if project_id is None:
+        project_id = get_project_id(api_key,project_name)
     api_base_url = os.environ['ICA_BASE_URL'] + "/ica/rest"
     endpoint = f"/api/projects/{project_id}/pipelines?pageOffset={pageOffset}&pageSize={pageSize}"
     full_url = api_base_url + endpoint	############ create header
@@ -194,7 +191,7 @@ def get_analysis_storage_id(api_key, storage_label=""):
         # Retrieve the list of analysis storage options.
         api_response = requests.get(full_url, headers=headers)
         pprint(api_response, indent = 4)
-        if storage_label not in ['Large', 'Medium', 'Small']:
+        if storage_label not in ['Large', 'Medium', 'Small','XLarge','2XLarge','3XLarge']:
             print("Not a valid storage_label\n" + "storage_label:" + str(storage_label))
             raise ValueError
         else:
@@ -310,8 +307,9 @@ def list_project_analyses(api_key,project_id,max_retries = 5):
     return analyses_metadata
 ################
 ##### code to launch pipeline in ICAv2
-def get_cwl_input_template(pipeline_code, api_key,project_name, fixed_input_data_fields,params_to_keep=[] , analysis_id=None):
-    project_id = get_project_id(api_key, project_name)
+def get_cwl_input_template(pipeline_code, api_key,project_name, fixed_input_data_fields,params_to_keep=[] , analysis_id=None,project_id=None):
+    if project_id is None:
+        project_id = get_project_id(api_key, project_name)
     project_analyses = list_project_analyses(api_key,project_id)
     headers = CaseInsensitiveDict()
     headers['Accept'] = 'application/vnd.illumina.v3+json'
@@ -387,7 +385,7 @@ def get_activation_code(api_key,project_id,pipeline_id,data_inputs,input_paramet
     entitlement_details = response.json()
     return entitlement_details['id']
 
-def launch_pipeline_analysis_cwl(api_key,project_id,pipeline_id,data_inputs,input_parameters,user_tags,storage_analysis_id,user_pipeline_reference,workflow_language):
+def launch_pipeline_analysis_cwl(api_key,project_id,pipeline_id,data_inputs,input_parameters,user_tags,storage_analysis_id,user_pipeline_reference,workflow_language,make_template=False):
     api_base_url = os.environ['ICA_BASE_URL'] + "/ica/rest"
     endpoint = f"/api/projects/{project_id}/analysis:{workflow_language}"
     full_url = api_base_url + endpoint
@@ -417,10 +415,80 @@ def launch_pipeline_analysis_cwl(api_key,project_id,pipeline_id,data_inputs,inpu
     collected_parameters["analysisInput"]["inputs"] = convert_data_inputs(data_inputs)
     collected_parameters["analysisInput"]["parameters"] = input_parameters
     collected_parameters["analysisInput"]["referenceDataParameters"] = []
-    response = requests.post(full_url, headers = headers, data = json.dumps(collected_parameters))
-    launch_details = response.json()
-    pprint(launch_details, indent=4)
-    return launch_details
+    # Writing to job template to f"{user_pipeline_reference}.job_template.json"
+    if make_template is True:
+        user_pipeline_reference_alias = user_pipeline_reference.replace(" ","_")
+        api_template = {}
+        api_template['headers'] = dict(headers)
+        api_template['data'] = collected_parameters
+        print(f"Writing your API job template out to {user_pipeline_reference_alias}.api_job_template.json for future use.\n")
+        with open(f"{user_pipeline_reference_alias}.api_job_template.json", "w") as outfile:
+            outfile.write(json.dumps(api_template,indent = 4))
+        return(print("Please feel free to edit before submitting"))
+    else:
+        ##########################################
+        response = requests.post(full_url, headers = headers, data = json.dumps(collected_parameters))
+        launch_details = response.json()
+        pprint(launch_details, indent=4)
+        return launch_details
+
+############
+####
+def flatten_list(nested_list):
+    def flatten(lst):
+        for item in lst:
+            if isinstance(item, list):
+                flatten(item)
+            else:
+                flat_list.append(item)
+
+    flat_list = []
+    flatten(nested_list)
+    return flat_list
+    
+def get_pipeline_request_template(api_key, project_id, pipeline_name, data_inputs, params,tags, storage_size, pipeline_run_name,workflow_language):
+    cli_template_prefix = ["icav2","projectpipelines","start",f"{workflow_language}",f"'{pipeline_name}'","--user-reference",f"{pipeline_run_name}"]
+    #### user tags for input
+    cli_tags_template = []
+    for k,v in enumerate(tags):
+        cli_tags_template.append(["--user-tag",v])
+    ### data inputs for the CLI command
+    cli_inputs_template =[]
+    for k in range(0,len(data_inputs)):
+        # deal with data inputs with a single value
+        if len(data_inputs[k]['data_ids']) < 2 and len(data_inputs[k]['data_ids']) > 0:
+            cli_inputs_template.append(["--input",f"{data_inputs[k]['parameter_code']}:{data_inputs[k]['data_ids'][0]}"])
+         # deal with data inputs with multiple values
+        else:
+            v_string = ','.join(data_inputs[k]['data_ids'])
+            cli_inputs_template.append(["--input",f"{data_inputs[k]['parameter_code']}:{v_string}"])
+    ### parameters for the CLI command        
+    cli_parameters_template = []
+    for k in range(0,len(params)):
+        parameter_of_interest = 'value'
+        if 'value' not in params[k].keys():
+            parameter_of_interest = 'multiValue'
+        # deal with parameters with a single value
+        if isinstance(params[k][parameter_of_interest],list) is False:
+            if params[k][parameter_of_interest] != "":
+                cli_parameters_template.append(["--parameters",f"{params[k]['code']}:'{params[k][parameter_of_interest]}'"])
+        else:
+        # deal with parameters with multiple values
+            if len(params[k][parameter_of_interest])  > 0:
+                v_string = ','.join([f"'{x}'" for x in params[k][parameter_of_interest]])
+                cli_parameters_template.append(["--parameters",f"{params[k]['code']}:\"{v_string}\""])
+    cli_metadata_template = ["--x-api-key",f"'{api_key}'","--project-id",f"{project_id}","--storage-size",f"{storage_size}"]
+    if workflow_language == "cwl":
+        cli_metadata_template.append("--type-input STRUCTURED")
+    full_cli = [cli_template_prefix,cli_tags_template,cli_inputs_template,cli_parameters_template,cli_metadata_template]
+    cli_template = ' '.join(flatten_list(full_cli))
+    ######
+    pipeline_run_name_alias = pipeline_run_name.replace(" ","_")
+    print(f"Writing your cli job template out to {pipeline_run_name_alias}.cli_job_template.txt for future use.\n")
+    with open(f"{pipeline_run_name_alias}.cli_job_template.txt", "w") as outfile:
+        outfile.write(f"{cli_template}")
+    print("Also printing out the CLI template to screen\n")
+    return(print(f"{cli_template}\n"))
 ###################################################
 def main():
     parser = argparse.ArgumentParser()
@@ -431,18 +499,22 @@ def main():
     parser.add_argument('--pipeline_name', default=None, type=str, help="ICA pipeline name [OPTIONAL]")
     parser.add_argument('--api_key_file', default=None, type=str, help="file that contains API-Key")
     parser.add_argument('--api_key', default=None, type=str, help="string that is the API-Key")
-    parser.add_argument('--workflow_language', default='cwl',const='cwl',nargs='?', choices =("cwl","nextflow"), type=str, help="workflow language (CWL or Nextflow)[OPTIONAL]")
-    parser.add_argument('--storage_size', default="Medium",const='Medium',nargs='?', choices=("Small","Medium","Large"), type=str, help="Storage disk size used for job [OPTIONAL]")
+    parser.add_argument('--create_api_template',default=False,action="store_true", help="flag to create ICA API template [OPTIONAL]\nIf this flag is set, no requeue is performed, but a API JSON template is saved\n")
+    parser.add_argument('--create_cli_template',default=False,action="store_true", help="flag to create ICA CLI template [OPTIONAL]\nIf this flag is set, no requeue is performed, but a CLI template is printed out\n")
+    parser.add_argument('--workflow_language', default=None,nargs='?', choices =("cwl","nextflow"), type=str, help="workflow language (CWL or Nextflow)[OPTIONAL]")
+    parser.add_argument('--storage_size', default="Medium",const='Medium',nargs='?', choices=("Small","Medium","Large","XLarge","2XLarge","3XLarge"), type=str, help="Storage disk size used for job [OPTIONAL].\nSee https://help.ica.illumina.com/reference/r-pricing#compute for more details.\n")
     parser.add_argument('--server_url', default='https://ica.illumina.com', type=str, help="ICA base URL [OPTIONAL]")
     args, extras = parser.parse_known_args()
 #############
     os.environ['ICA_BASE_URL'] = args.server_url
 #############
+    storage_size = None
     project_name = None
     if args.project_name is not None:
         project_name = args.project_name
     else:
-        raise ValueError("Please provide ICA project name")
+        if args.project_id is None:
+            raise ValueError("Please provide ICA project name or ICA project id")
     pipeline_id = None
     pipeline_name = None
     workflow_language = None
@@ -480,6 +552,7 @@ def main():
         for aidx,project_analysis in enumerate(analyses_list):
             #print(aidx)
             #print(project_analysis)
+            #sys.exit()
             if project_analysis['userReference'] == analysis_query:
                 analysis_id = project_analysis['id']
                 print(f"Found Analysis with name {analysis_query} with id : {analysis_id}\n")
@@ -489,12 +562,32 @@ def main():
                     pipeline_name = project_analysis['pipeline']['code']
                 if workflow_language is None:
                     workflow_language = project_analysis['pipeline']['language'].lower()
+                if 'analysisStorage' in project_analysis.keys():
+                    storage_size = project_analysis['analysisStorage']['name']
+    else:
+        if analysis_id is not None:
+            analyses_list = list_project_analyses(my_api_key,project_id)
+            for aidx,project_analysis in enumerate(analyses_list):
+                #print(project_analysis)
+                #sys.exit()
+                if project_analysis['id'] == analysis_id:
+                    analysis_query = project_analysis['userReference']
+                    print(f"Found Analysis with name {analysis_query} with id : {analysis_id}\n")
+                    if pipeline_id is None:
+                        pipeline_id = project_analysis['pipeline']['id']
+                    if pipeline_name is None:
+                        pipeline_name = project_analysis['pipeline']['code']
+                    if workflow_language is None:
+                        workflow_language = project_analysis['pipeline']['language'].lower()
+                    if 'analysisStorage' in project_analysis.keys():
+                        storage_size = project_analysis['analysisStorage']['name']
     if analysis_id is None:
         raise ValueError(f"Could not find analysis with user_reference : {analysis_query} in project with id : {project_id}")
     ##### crafting job template
     input_data_fields_to_keep  = []
     param_fields_to_keep = []
-    job_templates = get_cwl_input_template(pipeline_name, my_api_key,project_name, input_data_fields_to_keep, param_fields_to_keep,analysis_id = analysis_id)
+    job_templates = get_cwl_input_template(pipeline_name, my_api_key,project_name,input_data_fields_to_keep, param_fields_to_keep,analysis_id = analysis_id,project_id=project_id)
+    ########################################
     analysis_metadata = get_project_analysis(my_api_key,project_id,analysis_id)
     while analysis_metadata is None:
         analysis_metadata = get_project_analysis(my_api_key,project_id,analysis_id)
@@ -507,17 +600,26 @@ def main():
     #print(my_params)
     my_data_inputs = job_templates['input_data']
     #print(my_data_inputs)
-    pipeline_id = get_pipeline_id(pipeline_name, my_api_key,project_name)
+    pipeline_id = get_pipeline_id(pipeline_name, my_api_key,project_name,project_id = project_id)
     my_tags = [pipeline_run_name]
-    my_storage_analysis_id = get_analysis_storage_id(my_api_key, args.storage_size)
+    if storage_size is None:
+        storage_size = args.storage_size
+    my_storage_analysis_id = get_analysis_storage_id(my_api_key, storage_size)
     ### add sleep to avoid pipeline getting stuck in AWAITINGINPUT state? 
     time.sleep(5)
     time_now = str(dt.now())
-    print (f"my worklflow_language {workflow_language}")
+    print (f"my workflow_language {workflow_language}")
     print(f"{time_now} Launching pipeline analysis for {pipeline_run_name}")
-    test_launch = launch_pipeline_analysis_cwl(my_api_key, project_id, pipeline_id, my_data_inputs, my_params,my_tags, my_storage_analysis_id, pipeline_run_name,workflow_language)
-    pipeline_analysis_id = test_launch['id']
-    print(f"Requeued {pipeline_run_name} with analysis with id : {pipeline_analysis_id} in project with id :{project_id}")
+    if args.create_cli_template is False:
+        if args.create_api_template is False:
+            test_launch = launch_pipeline_analysis_cwl(my_api_key, project_id, pipeline_id, my_data_inputs, my_params,my_tags, my_storage_analysis_id, pipeline_run_name,workflow_language)
+            pipeline_analysis_id = test_launch['id']
+            print(f"Requeued {pipeline_run_name} with analysis with id : {pipeline_analysis_id} in project with id :{project_id}")
+        else:
+            test_launch = launch_pipeline_analysis_cwl(my_api_key, project_id, pipeline_id, my_data_inputs, my_params,my_tags, my_storage_analysis_id, pipeline_run_name,workflow_language,make_template = args.create_api_template)
+    else:
+        print(f"Here is your template for submitting a new pipeline run for [ {pipeline_run_name} ] for the pipeline {pipeline_name} in project with id :{project_id}\nPlease feel free to modify before executing\n")
+        get_pipeline_request_template(my_api_key, project_id, pipeline_name, my_data_inputs, my_params,my_tags, args.storage_size, pipeline_run_name,workflow_language)
 
 if __name__ == '__main__':
     main()
