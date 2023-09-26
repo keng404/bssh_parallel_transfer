@@ -1,6 +1,6 @@
 # Requeue a pipeline run ICAv2
 
-The script ```relaunch_pipeline.py``` can also be run in a Docker container ```keng404/ica_pipeline_relaunch:0.0.1```. This script was developed in an environment python>=3.9.
+The script ```relaunch_pipeline.py``` can also be run in a Docker container ```keng404/ica_pipeline_relaunch:0.0.1```. This script was developed in an environment where python >= 3.9.
 
 ## You can requeue pipeline runs 
 - By specifying the user_reference/analysis_id and the corresponding project_name/project_id along with your [API_KEY file](https://help.ica.illumina.com/account-management/am-iam#api-keys) or your API_KEY as a string
