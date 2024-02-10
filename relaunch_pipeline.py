@@ -479,7 +479,10 @@ def get_pipeline_request_template(api_key, project_id, pipeline_name, data_input
                 simplified_string = [x.strip('\'') for x in params[k][parameter_of_interest]]
                 # stylize multi-value parameters
                 v_string = ','.join([f"'{x}'" for x in simplified_string])
-                cli_parameters_template.append(["--parameters",f"{params[k]['code']}:\"{v_string}\""])
+                if len(simplified_string) > 1:
+                    cli_parameters_template.append(["--parameters",f"{params[k]['code']}:\"{v_string}\""])
+                elif len(simplified_string) > 0 and simplified_string[0] != '':
+                    cli_parameters_template.append(["--parameters",f"{params[k]['code']}:{v_string}"])
     cli_metadata_template = ["--x-api-key",f"'{api_key}'","--project-id",f"{project_id}","--storage-size",f"{storage_size}"]
     if workflow_language == "cwl":
         cli_metadata_template.append("--type-input STRUCTURED")
