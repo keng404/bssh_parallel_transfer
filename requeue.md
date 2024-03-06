@@ -7,26 +7,26 @@ The script ```relaunch_pipeline.py``` can also be run in a Docker container ```k
 
 Below is a 'minimal' example command line:
 ```bash
-python3 relaunch_pipeline.py --user_reference <USER_RUN_REFERENCE> --project_name <ICA_PROJECT_NAME> --api_key_file <PATH_TO_API_KEY_FILE>|--api-key <API_KEY>
+python3 relaunch_pipeline.py --user_reference <USER_RUN_REFERENCE> --project_name <ICA_PROJECT_NAME> --api_key_file <PATH_TO_API_KEY_FILE>|--api_key <API_KEY>
 ```
 or
 
 ```bash
-python3 relaunch_pipeline.py --analysis_id <ANALYSIS_ID> --project_name <ICA_PROJECT_NAME> --api_key_file <PATH_TO_API_KEY_FILE>|--api-key <API_KEY>
+python3 relaunch_pipeline.py --analysis_id <ANALYSIS_ID> --project_name <ICA_PROJECT_NAME> --api_key_file <PATH_TO_API_KEY_FILE>|--api_key <API_KEY>
 ```
 
 ## You can also create API and CLI templates
 
 ### ICA CLI template generation
 ```bash
-python3 relaunch_pipeline.py --user_reference <USER_RUN_REFERENCE> --project_name <ICA_PROJECT_NAME> --api_key_file <PATH_TO_API_KEY_FILE>|--api-key <API_KEY> --create_cli_template
+python3 relaunch_pipeline.py --user_reference <USER_RUN_REFERENCE> --project_name <ICA_PROJECT_NAME> --api_key_file <PATH_TO_API_KEY_FILE>|--api_key <API_KEY> --create_cli_template
 ```
 This command  will print out a CLI template you can copy + paste to requeue a pipeline run. You can modify 
 this template before running. As a convenience, a text file is saved with the CLI command for future reference.
 
 ### ICA API template generation
 ```bash
-python3 relaunch_pipeline.py --user_reference <USER_RUN_REFERENCE> --project_name <ICA_PROJECT_NAME> --api_key_file <PATH_TO_API_KEY_FILE>|--api-key <API_KEY> --create_api_template
+python3 relaunch_pipeline.py --user_reference <USER_RUN_REFERENCE> --project_name <ICA_PROJECT_NAME> --api_key_file <PATH_TO_API_KEY_FILE>|--api_key <API_KEY> --create_api_template
 ```
 This command will save a API JSON template you can copy + paste to requeue a pipeline run. You can modify this template before running. As a convenience, a text file is saved with the API command for future reference.
 
