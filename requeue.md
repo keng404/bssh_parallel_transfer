@@ -38,6 +38,6 @@ The JSON file will have two fields, ```header``` and ```data```, that you can pa
   - to be fair this scenario needs to be tested more rigorously. Underscores and dashes should be fine.   
 
 # Limitations
-This script will not work for any CWL-based pipelines where users have used an inputJSON to provide inputData and parameters.
+This script will not work for any pipelines where users have used an inputJSON to provide inputData and parameters.
 
 Additionally, the ICA CLI is not installed, so even though you can generate a CLI template, you should run it where you have your [ICA CLI installed](https://help.ica.illumina.com/command-line-interface/cli-releasehistory).
