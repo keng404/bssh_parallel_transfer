@@ -24,6 +24,10 @@ python3 relaunch_pipeline.py --user_reference <USER_RUN_REFERENCE> --project_nam
 This command  will print out a CLI template you can copy + paste to requeue a pipeline run. You can modify 
 this template before running. As a convenience, a text file is saved with the CLI command for future reference.
 
+
+- **NOTE** ICA CLI limitation launching an ICA pipeline where you have a null (i.e. not specified) multi-value parameter. You won't be able to configure this in the CLI.
+  - **This is possible** when launching via the API (default settings).
+
 ### ICA API template generation
 ```bash
 python3 relaunch_pipeline.py --user_reference <USER_RUN_REFERENCE> --project_name <ICA_PROJECT_NAME> --api_key_file <PATH_TO_API_KEY_FILE>|--api_key <API_KEY> --create_api_template
@@ -41,3 +45,4 @@ The JSON file will have two fields, ```header``` and ```data```, that you can pa
 This script will not work for any pipelines where users have used an inputJSON to provide inputData and parameters.
 
 Additionally, the ICA CLI is not installed, so even though you can generate a CLI template, you should run it where you have your [ICA CLI installed](https://help.ica.illumina.com/command-line-interface/cli-releasehistory).
+
