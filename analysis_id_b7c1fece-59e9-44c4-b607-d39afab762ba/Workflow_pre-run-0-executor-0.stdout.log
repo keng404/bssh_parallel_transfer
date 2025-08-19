@@ -1,0 +1,9 @@
+2023-10-02 18:51:47.243654 [NOTICE] [Context.cc:310] Downloading 8 item(s)
+2023-10-02 18:51:47.302163 [NOTICE] [RequestGroup.cc:1213] Download complete: /ces/scheduler/run/b7c1fece-59e9-44c4-b607-d39afab762ba/data/userNextflow.config
+2023-10-02 18:51:47.302451 [NOTICE] [RequestGroup.cc:1213] Download complete: /ces/scheduler/run/b7c1fece-59e9-44c4-b607-d39afab762ba/data/my_sample.dragen_germline.fastq_list.csv
+2023-10-02 18:51:47.320899 [NOTICE] [RequestGroup.cc:1213] Download complete: /ces/scheduler/run/b7c1fece-59e9-44c4-b607-d39afab762ba/data/nextflow.config
+2023-10-02 18:51:47.321742 [NOTICE] [RequestGroup.cc:1213] Download complete: /ces/scheduler/run/b7c1fece-59e9-44c4-b607-d39afab762ba/data/defaultNextflow.config
+2023-10-02 18:58:12.530346 [NOTICE] [RequestGroup.cc:1213] Download complete: /ces/scheduler/run/b7c1fece-59e9-44c4-b607-d39afab762ba/data/hg38.tar
+2023-10-02 18:59:28.623354 [NOTICE] [RequestGroup.cc:1213] Download complete: /ces/scheduler/run/b7c1fece-59e9-44c4-b607-d39afab762ba/data/dragen-vcml-hg38-3.1-0.zip
+2023-10-02 19:02:00.845363 [NOTICE] [RequestGroup.cc:1213] Download complete: /ces/scheduler/run/b7c1fece-59e9-44c4-b607-d39afab762ba/data/NA12878-PCRF450-1_S1_L001_R1_001.fastq.gz
+2023-10-02 19:02:52.210103 [NOTICE] [RequestGroup.cc:1213] Download complete: /ces/scheduler/run/b7c1fece-59e9-44c4-b607-d39afab762ba/data/NA12878-PCRF450-1_S1_L001_R2_001.fastq.gz
