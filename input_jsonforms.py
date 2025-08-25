@@ -5,6 +5,25 @@ import pprint
 from pprint import pprint
 import requests
 from requests.structures import CaseInsensitiveDict
+###############
+def string_to_boolean(s):
+    if s.lower() == 'true':
+        return True
+    elif s.lower() == 'false':
+        return False
+    else:
+        return s
+
+def choices_conversion(choices,val):
+    choices_dict = dict()
+    for idx,choice in enumerate(choices):
+        choices_dict[choice['value']] = choice['text']
+    if val in list(choices_dict.keys()):
+        return choices_dict[val]
+    else:
+        return val
+
+
 
 def curlify(method="GET",endpoint="FOOBAR",header={},body={}):
     curlified_command_components = []
@@ -23,16 +42,21 @@ def curlify(method="GET",endpoint="FOOBAR",header={},body={}):
 
 def get_inputform_values(api_key,project_id,analysis_id):
     api_base_url = os.environ['ICA_BASE_URL'] + "/ica/rest"
-    endpoint = f"/api/projects/{project_id}/analysis:/{analysis_id}/inputFormValues"
+    endpoint = f"/api/projects/{project_id}/analyses/{analysis_id}/inputFormValues"
     full_url = api_base_url + endpoint
     headers = CaseInsensitiveDict()
     headers['Accept'] = 'application/vnd.illumina.v4+json'
     headers['Content-Type'] = 'application/vnd.illumina.v4+json'
     headers['X-API-Key'] = api_key
+    print(f"get_inputform_values_URL: {full_url}")
     try:
         response = requests.get(full_url, headers=headers)
         input_form_values = response.json()['items']
+        #input_form_values = json.dumps(input_form_values)
+        ##print("Found input form values")
+        ##pprint(input_form_values,indent=4)
     except:
+        pprint(response,indent=4)
         input_form_values = None
     return input_form_values
 ##
@@ -67,7 +91,8 @@ def submit_jsoninputform(api_key,project_id,pipeline_id,api_dict,user_tags,stora
         print("Please feel free to edit before submitting")
         with open(f"{user_pipeline_reference_alias}.api_job_template.txt", "w") as outfile:
             outfile.write(f"{curl_command}")
-        print("Also printing out the CLI template to screen\n")
+        print("Also printing out the API template to screen\n")
+        print(f"{curl_command}")
         return(f"{curl_command}")
         
         ##########################################
@@ -95,10 +120,11 @@ def collect_clidict_jsoninputform(json_response):
         elif fields['type'].upper() == "FIELDGROUP":
             group_name = fields['id']
             ### groupValues
-            if 'groupValues' in fields.keys():
+            if 'groupValues' in fields.keys() and fields['hidden'] is not True and fields['disabled'] is not True:
                 group_values = fields['groupValues']
                 for idx,param_g in enumerate(group_values):
-                    index_num = f"index{idx+1}"
+                    #index_num = f"index{idx+1}"
+                    index_num = f"{idx+1}"
                     for idx1,param in enumerate(param_g['values']):
                         field_name = param['id']
                         name_components = [group_name,index_num,field_name]
@@ -107,9 +133,10 @@ def collect_clidict_jsoninputform(json_response):
                             data_values = []
                             field_values = []
                             for p in param['values']:
-                                if re.match("^fol.",p) is not None or re.match("^fil.",p) is not None:
+                                my_bool = re.search("^fol.",p) is not None or re.search("^fil.",p) is not None
+                                if re.search("^fol.",p) is not None or re.search("^fil.",p) is not None:
                                     data_values.append(p)
-                                elif re.match("^fol.",p) is None and re.match("^fil.",p) is None:
+                                elif re.search("^fol.",p) is None and re.search("^fil.",p) is None:
                                     field_values.append(p)
                             if len(data_values) > 0:
                                 cli_dict['group-data'][name_str] = data_values
@@ -120,25 +147,51 @@ def collect_clidict_jsoninputform(json_response):
                 group_fields = fields['fields']
                 for idx,param in enumerate(group_fields):
                     index_num = f"index{idx+1}"
-                    if param['hidden'] is not True and 'values' in param.keys():
+                    if param['hidden'] is not True and param['disabled'] is not True and 'values' in param.keys():
                         field_name = param['id']
                         name_components = [group_name,index_num,field_name]
                         name_str = ".".join(name_components)
-                        cli_dict['group'][name_str] = param['values']
-                    elif param['hidden'] is not True and 'dataValues' in param.keys():
+                        new_values = None
+                        ### checkbox is of boolean type
+                        if param['type'].upper() in ["CHECKBOX"]:
+                            new_values = [ string_to_boolean(x) for x in param['values'] ]
+                        if param['type'].upper() in ["INTEGER"]:
+                            new_values = [ int(x) for x in param['values'] ]
+                        if new_values is not None:
+                            param['values'] = new_values
+                        if len(param['values']) > 0:
+                            cli_dict['group'][name_str] = param['values']
+                    elif param['hidden'] is not True and param['disabled'] is not True and 'dataValues' in param.keys():
                         field_name = param['id']
                         name_components = [group_name,index_num,field_name]
                         name_str = ".".join(name_components)
-                        cli_dict['group-data'][name_str] = param['dataValues']
+                        if len(param['dataValuues']) > 0:
+                            cli_dict['group-data'][name_str] = param['dataValues']
 
         else:
         ### otherwise grab values
-            if fields['hidden'] is not True:
+            if fields['hidden'] is not True and fields['disabled'] is not True:
                 if 'values' in list(fields.keys()):
-                    cli_dict['field'][fields['id']] = fields['values']
+                    new_values = None
+                    ### checkbox is of boolean type
+                    if fields['type'].upper() in ["CHECKBOX"]:
+                        new_values = [ string_to_boolean(x) for x in fields['values'] ]
+                    if fields['type'].upper() in ["INTEGER"]:
+                        new_values = [ int(x) for x in fields['values'] ]
+                    if new_values is not None:
+                        fields['values'] = new_values
+                    if len(fields['values']) > 0:
+                        cli_dict['field'][fields['id']] = fields['values']
     return cli_dict
 ####x = collect_clidict_jsoninputform(d['items'])
 #$pprint(x)
+def handle_cli_bool(val):
+    if val is True:
+        return "true"
+    elif val is False:
+        return "false"
+    else:
+        return val
 
 def clidict_to_commandline(cli_dict):
     cli_line = []
@@ -146,11 +199,13 @@ def clidict_to_commandline(cli_dict):
     for flag in cli_flags:
         for k in cli_dict[flag].keys():
             v = cli_dict[flag][k]
+            v = [handle_cli_bool(x) for x in v]
             if len(v) == 1:
-                cli_str = f"--{flag} " + k + ":"  + v[0] 
+                cli_str = f"--{flag} " + k + ":"  + f"{v[0]}"
                 cli_line.append(cli_str)
             else:
                 cli_str = f"--{flag} " + k + ":"  + ",".join(v)
+                cli_line.append(cli_str)
     return cli_line
 
 ##y = clidict_to_commandline(x)
@@ -167,7 +222,7 @@ def collect_apidict_jsoninputform(json_response):
             print(f"Skipping {fields['id']}")
         ##### if element is a datatype
         elif fields['type'].upper() == "DATA":
-            if fields['hidden'] is not True:
+            if fields['hidden'] is not True and fields['disabled'] is not True:
                 if 'dataValues' in list(fields.keys()):
                     param_dict = dict()
                     param_dict['id'] = fields['id']
@@ -175,88 +230,105 @@ def collect_apidict_jsoninputform(json_response):
                     if len(param_dict['dataValues']) > 0:
                         api_dict['fields'].append(param_dict)
         elif fields['type'].upper() == "FIELDGROUP":
-            group_values_dict = dict()
-            group_values_dict['values'] = []
-            overall_group_values = dict()
-            overall_group_values['values'] = []
-            overall_group_values['id'] = fields['id']
-            ### groupValues
-            if 'groupValues' in fields.keys():
-                group_values = fields['groupValues']
-                for idx,param_g in enumerate(group_values):
-                    for idx1,param in enumerate(param_g['values']):
-                        param_dict = dict()
-                        param_dict['id'] = param['id']
-                        param_dict['dataValues'] = []
-                        param_dict['values'] = []
-                        if len(param['values']) > 0:
-                            for p in param['values']:
-                                if re.match("^fol.",p) is not None or re.match("^fil.",p) is not None:
-                                    param_dict['dataValues'].append(p)
-                                elif re.match("^fol.",p) is None and re.match("^fil.",p) is None:
-                                    param_dict['values'].append(p)
-                        group_values_dict['values'].append(param_dict) 
-                overall_group_values['values'].append(group_values_dict)
-            ### fields
-            if 'fields' in fields.keys():
-                group_fields = fields['fields']
-                for idx,param in enumerate(group_fields):
-                    if param['hidden'] is not True and 'values' in param.keys():
-                        param_dict = dict()
-                        param_dict['id'] = param['id']
-                        if len(param['values']) > 0:
-                            param_dict['values'] = param['values']
-                            group_values_dict['values'].append(param_dict) 
-                        overall_group_values['values'].append(group_values_dict)
-                    elif param['hidden'] is not True and 'dataValues' in param.keys():
-                        param_dict = dict()
-                        param_dict['id'] = param['id']
-                        if len(param['dataValues']) > 0:
-                            param_dict['dataValues'] = param['dataValues']
-                            group_values_dict['values'].append(param_dict) 
-                        overall_group_values['values'].append(group_values_dict)
-            ### add nested object back
-            if len(overall_group_values) > 0:
-                    api_dict['groups'].append(overall_group_values)
+            if fields['hidden'] is not True and fields['disabled'] is not True:
+                overall_group_values = dict()
+                overall_group_values['values'] = []
+                overall_group_values['id'] = fields['id']
+                ### groupValues
+                if 'groupValues' in fields.keys():
+                    group_values = fields['groupValues']
+                    for idx,param_g in enumerate(group_values):
+                        group_values_dict = dict()
+                        group_values_dict['values'] = []
+                        for idx1,param in enumerate(param_g['values']):
+                            param_dict = dict()
+                            param_dict['id'] = param['id']
+                            param_dict['dataValues'] = []
+                            param_dict['values'] = []
+                            if len(param['values']) > 0:
+                                for p in param['values']:
+                                    if re.match("^fol.",p) is not None or re.match("^fil.",p) is not None:
+                                        data_dict = dict()
+                                        data_dict['dataId'] = p
+                                        param_dict['dataValues'].append(data_dict)
+                                    elif re.match("^fol.",p) is None and re.match("^fil.",p) is None:
+                                        param_dict['values'].append(p)
+                            ## remove 'values' if we don't have any information to send
+                            if len(param_dict['values']) == 0:
+                                param_dict.pop('values', None)
+                            ## remove 'dataValues' if we don't have any information to send
+                            if len(param_dict['dataValues']) == 0:
+                                param_dict.pop('dataValues', None)
+                            if len(param_dict.keys()) > 0:
+                                group_values_dict['values'].append(param_dict) 
+                        if len(group_values_dict['values']) > 0:
+                            overall_group_values['values'].append(group_values_dict)
+                ### fields
+                if 'fields' in fields.keys():
+                    group_fields = fields['fields']
+                    group_values_dict = dict()
+                    group_values_dict['values'] = []
+                    for idx,param in enumerate(group_fields):
+                        if param['hidden'] is not True and param['disabled'] is not True and 'values' in param.keys():
+                            param_dict = dict()
+                            param_dict['id'] = param['id']
+                            new_values = None
+                            ### checkbox is of boolean type
+                            if param['type'].upper() in ["CHECKBOX"]:
+                                new_values = [ string_to_boolean(x) for x in param['values'] ]
+                            if param['type'].upper() in ["INTEGER"]:
+                                new_values = [ int(x) for x in param['values'] ]
+                            #if 'choices' in list(param.keys()):
+                            #    new_values = [ choices_conversion(param['choices'],x) for x in param['values']]
+                            if new_values is not None:
+                                param['values'] = new_values
+                            if len(param['values']) > 0:
+                                param_dict['values'] = param['values']
+                            ## remove 'values' if we don't have any information to send
+                            if len(param_dict['values']) == 0:
+                                param_dict.pop('values', None)
+                            ## remove 'dataValues' if we don't have any information to send
+                            if len(param_dict['dataValues']) == 0:
+                                param_dict.pop('dataValues', None)
+                            if len(param_dict.keys()) > 0:
+                                group_values_dict['values'].append(param_dict) 
+                        elif param['hidden'] is not True and param['disabled'] is not True and 'dataValues' in param.keys():
+                            param_dict = dict()
+                            param_dict['id'] = param['id']
+                            if len(param['dataValues']) > 0:
+                                param_dict['dataValues'] = param['dataValues']
+                            ## remove 'values' if we don't have any information to send
+                            if len(param_dict['values']) == 0:
+                                param_dict.pop('values', None)
+                            ## remove 'dataValues' if we don't have any information to send
+                            if len(param_dict['dataValues']) == 0:
+                                param_dict.pop('dataValues', None)
+                            if len(param_dict.keys()) > 0:
+                                group_values_dict['values'].append(param_dict)  
+                        if len(group_values_dict['values']) > 0:
+                            overall_group_values['values'].append(group_values_dict)
+                ### add nested object back
+                if len(overall_group_values['values']) > 0:
+                        api_dict['groups'].append(overall_group_values)
         else:
         ### otherwise grab values
-            if fields['hidden'] is not True:
+            if fields['hidden'] is not True and fields['disabled'] is not True:
                 if 'values' in list(fields.keys()):
                     param_dict = dict()
                     param_dict['id'] = fields['id']
+                    new_values = None
+                    ### checkbox is of boolean type
+                    if fields['type'].upper() in ["CHECKBOX"]:
+                        new_values = [ string_to_boolean(x) for x in fields['values'] ]
+                    if fields['type'].upper() in ["INTEGER"]:
+                        new_values = [ int(x) for x in fields['values'] ]
+                    #if 'choices' in list(fields.keys()):
+                    #    new_values = [ choices_conversion(fields['choices'],x) for x in fields['values']]
+                    if new_values is not None:
+                        fields['values'] = new_values
                     param_dict['values'] = fields['values']
                     if len(param_dict['values']) > 0:
                         api_dict['fields'].append(param_dict)
     return api_dict
 ###z = collect_apidict_jsoninputform(d['items'])
 ####pprint(z,indent = 4)    
-
-### add to main script
-def get_cli_template_jsoninputform(api_key, project_id, pipeline_name, analysis_id,tags, storage_size, pipeline_run_name,workflow_language):
-    user_pipeline_reference_alias = pipeline_run_name.replace(" ","_")
-    pipeline_run_name = user_pipeline_reference_alias
-    cli_template_prefix = ["icav2","projectpipelines","start",f"{workflow_language}",f"'{pipeline_name}'","--user-reference",f"{pipeline_run_name}"]
-    #### user tags for input
-    cli_tags_template = []
-    for k,v in enumerate(tags):
-        cli_tags_template.append(["--user-tag",v])
-    ############################################
-    inputform_values = get_inputform_values(api_key,project_id,analysis_id)
-    cli_input_form_values_dict = collect_clidict_jsoninputform(inputform_values)
-    cli_input_form_values = clidict_to_commandline(cli_input_form_values_dict)
-    ############################################
-    cli_metadata_template = ["--x-api-key",f"'{api_key}'","--project-id",f"{project_id}","--storage-size",f"{storage_size}"]
-    full_cli = [cli_template_prefix,cli_tags_template,cli_input_form_values,cli_metadata_template]
-    cli_template = ' '.join(flatten_list(full_cli))
-    ## add newlines and create 'pretty' template
-    new_cli_template = prettify_cli_template(flatten_list(full_cli))
-    if new_cli_template is not None:
-        cli_template = new_cli_template
-
-    ######
-    pipeline_run_name_alias = pipeline_run_name.replace(" ","_")
-    print(f"Writing your cli job template out to {pipeline_run_name_alias}.cli_job_template.txt for future use.\n")
-    with open(f"{pipeline_run_name_alias}.cli_job_template.txt", "w") as outfile:
-        outfile.write(f"{cli_template}")
-    print("Also printing out the CLI template to screen\n")
-    return(print(f"{cli_template}\n"))

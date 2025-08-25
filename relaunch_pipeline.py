@@ -12,7 +12,7 @@ from datetime import datetime as dt
 import time
 from time import sleep
 import random
-
+import input_jsonforms
 ##ICA_BASE_URL = "https://ica.illumina.com/ica"
 
 ## helper functions to create objects for the input_data and input_parameters of a 'newly' launched pipeline run
@@ -522,7 +522,39 @@ def get_pipeline_request_template(api_key, project_id, pipeline_name, data_input
         outfile.write(f"{cli_template}")
     print("Also printing out the CLI template to screen\n")
     return(print(f"{cli_template}\n"))
+
 ###################################################
+def get_cli_template_jsoninputform(api_key, project_id, pipeline_name, analysis_id,tags, storage_size, pipeline_run_name,workflow_language):
+    user_pipeline_reference_alias = pipeline_run_name.replace(" ","_")
+    pipeline_run_name = user_pipeline_reference_alias
+    cli_template_prefix = ["icav2","projectpipelines","start",f"{workflow_language}json",f"'{pipeline_name}'","--user-reference",f"{pipeline_run_name}"]
+    #### user tags for input
+    cli_tags_template = []
+    for k,v in enumerate(tags):
+        cli_tags_template.append(["--user-tag",v])
+    ############################################
+    inputform_values = input_jsonforms.get_inputform_values(api_key,project_id,analysis_id)
+    cli_input_form_values_dict = input_jsonforms.collect_clidict_jsoninputform(inputform_values)
+    print(f"cli_input_form_values_dict: {cli_input_form_values_dict}")
+    cli_input_form_values = input_jsonforms.clidict_to_commandline(cli_input_form_values_dict)
+    print(f"cli_input_form_values: {cli_input_form_values}")
+    ############################################
+    cli_metadata_template = ["--x-api-key",f"'{api_key}'","--project-id",f"{project_id}","--storage-size",f"{storage_size}"]
+    full_cli = [cli_template_prefix,cli_tags_template,cli_input_form_values,cli_metadata_template]
+    cli_template = ' '.join(flatten_list(full_cli))
+    ## add newlines and create 'pretty' template
+    new_cli_template = prettify_cli_template(flatten_list(full_cli))
+    if new_cli_template is not None:
+        cli_template = new_cli_template
+
+    ######
+    pipeline_run_name_alias = pipeline_run_name.replace(" ","_")
+    print(f"Writing your cli job template out to {pipeline_run_name_alias}.cli_job_template.txt for future use.\n")
+    with open(f"{pipeline_run_name_alias}.cli_job_template.txt", "w") as outfile:
+        outfile.write(f"{cli_template}")
+    print("Also printing out the CLI template to screen\n")
+    return(print(f"{cli_template}\n"))
+######################################
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--project_id',default=None, type=str, help="ICA project id [OPTIONAL]")
@@ -537,10 +569,12 @@ def main():
     parser.add_argument('--workflow_language', default=None,nargs='?', choices =("cwl","nextflow"), type=str, help="workflow language (CWL or Nextflow)[OPTIONAL]")
     parser.add_argument('--storage_size', default="Medium",const='Medium',nargs='?', choices=("Small","Medium","Large","XLarge","2XLarge","3XLarge"), type=str, help="Storage disk size used for job [OPTIONAL].\nSee https://help.ica.illumina.com/reference/r-pricing#compute for more details.\n")
     parser.add_argument('--server_url', default='https://ica.illumina.com', type=str, help="ICA base URL [OPTIONAL]")
+    parser.add_argument('--input_form_type', default=None, type=str, help="Identifies if pipeline is JSON or XML input form based")
     args, extras = parser.parse_known_args()
 #############
     os.environ['ICA_BASE_URL'] = args.server_url
 #############
+    input_form_type = None
     storage_size = None
     project_name = None
     if args.project_name is not None:
@@ -597,6 +631,7 @@ def main():
                     workflow_language = project_analysis['pipeline']['language'].lower()
                 if 'analysisStorage' in project_analysis.keys():
                     storage_size = project_analysis['analysisStorage']['name']
+                input_form_type = project_analysis['pipeline']['inputFormType'].upper()
     else:
         if analysis_id is not None:
             analyses_list = list_project_analyses(my_api_key,project_id)
@@ -614,12 +649,15 @@ def main():
                         workflow_language = project_analysis['pipeline']['language'].lower()
                     if 'analysisStorage' in project_analysis.keys():
                         storage_size = project_analysis['analysisStorage']['name']
+                    input_form_type = project_analysis['pipeline']['inputFormType'].upper()
+
     if analysis_id is None:
         raise ValueError(f"Could not find analysis with user_reference : {analysis_query} in project with id : {project_id}")
     ##### crafting job template
     input_data_fields_to_keep  = []
     param_fields_to_keep = []
-    job_templates = get_cwl_input_template(pipeline_name, my_api_key,project_name,input_data_fields_to_keep, param_fields_to_keep,analysis_id = analysis_id,project_id=project_id)
+    if input_form_type == "XML":
+        job_templates = get_cwl_input_template(pipeline_name, my_api_key,project_name,input_data_fields_to_keep, param_fields_to_keep,analysis_id = analysis_id,project_id=project_id)
     ########################################
     analysis_metadata = get_project_analysis(my_api_key,project_id,analysis_id)
     while analysis_metadata is None:
@@ -629,9 +667,10 @@ def main():
     timestampStr = dateTimeObj.strftime("%Y%b%d_%H_%M_%S_%f")
     pipeline_run_name = analysis_metadata['userReference'] + "_requeue_" + timestampStr 
     print(f"Setting up pipeline analysis for {pipeline_run_name}")
-    my_params = job_templates['parameter_settings']
-    #print(my_params)
-    my_data_inputs = job_templates['input_data']
+    if input_form_type == "XML":
+        my_params = job_templates['parameter_settings']
+        #print(my_params)
+        my_data_inputs = job_templates['input_data']
     #print(my_data_inputs)
     pipeline_id = get_pipeline_id(pipeline_name, my_api_key,project_name,project_id = project_id)
     my_tags = [pipeline_run_name]
@@ -641,18 +680,41 @@ def main():
     ### add sleep to avoid pipeline getting stuck in AWAITINGINPUT state? 
     time.sleep(5)
     time_now = str(dt.now())
-    print (f"my workflow_language {workflow_language}")
     print(f"{time_now} Launching pipeline analysis for {pipeline_run_name}")
     if args.create_cli_template is False:
         if args.create_api_template is False:
-            test_launch = launch_pipeline_analysis_cwl(my_api_key, project_id, pipeline_id, my_data_inputs, my_params,my_tags, my_storage_analysis_id, pipeline_run_name,workflow_language)
-            pipeline_analysis_id = test_launch['id']
-            print(f"Requeued {pipeline_run_name} with analysis with id : {pipeline_analysis_id} in project with id :{project_id}")
+            if input_form_type == "XML":
+                test_launch = launch_pipeline_analysis_cwl(my_api_key, project_id, pipeline_id, my_data_inputs, my_params,my_tags, my_storage_analysis_id, pipeline_run_name,workflow_language)
+                pipeline_analysis_id = test_launch['id']
+                print(f"Requeued {pipeline_run_name} with analysis with id : {pipeline_analysis_id} in project with id :{project_id}")
+            elif input_form_type == "JSON":
+                input_dict = input_jsonforms.get_inputform_values(my_api_key,project_id,analysis_id)
+                api_dict = input_jsonforms.collect_apidict_jsoninputform(input_dict)
+                if api_dict is not None:
+                    test_launch = input_jsonforms.submit_jsoninputform(my_api_key, project_id, pipeline_id, api_dict,my_tags, my_storage_analysis_id, pipeline_run_name,workflow_language)
+                    pipeline_analysis_id = test_launch['id']
+                    print(f"Requeued {pipeline_run_name} with analysis with id : {pipeline_analysis_id} in project with id :{project_id}")
+                else:
+                    print(f"Error: Could not requeue JSON-based pipeline")
         else:
-            test_launch = launch_pipeline_analysis_cwl(my_api_key, project_id, pipeline_id, my_data_inputs, my_params,my_tags, my_storage_analysis_id, pipeline_run_name,workflow_language,make_template = args.create_api_template)
+            if input_form_type == "XML":
+                test_launch = launch_pipeline_analysis_cwl(my_api_key, project_id, pipeline_id, my_data_inputs, my_params,my_tags, my_storage_analysis_id, pipeline_run_name,workflow_language,make_template = args.create_api_template)
+            elif input_form_type == "JSON":
+                input_dict = input_jsonforms.get_inputform_values(my_api_key,project_id,analysis_id)
+                api_dict = input_jsonforms.collect_apidict_jsoninputform(input_dict)
+                if api_dict is not None:
+                    test_launch = input_jsonforms.submit_jsoninputform(my_api_key, project_id, pipeline_id, api_dict,my_tags, my_storage_analysis_id, pipeline_run_name,workflow_language,make_template = args.create_api_template)
+                else:
+                    print(f"Error: Could not create API template to requeue JSON-based pipeline")
     else:
         print(f"Here is your template for submitting a new pipeline run for [ {pipeline_run_name} ] for the pipeline {pipeline_name} in project with id :{project_id}\nPlease feel free to modify before executing\n")
-        get_pipeline_request_template(my_api_key, project_id, pipeline_name, my_data_inputs, my_params,my_tags, args.storage_size, pipeline_run_name,workflow_language)
+        if input_form_type == "XML":
+            get_pipeline_request_template(my_api_key, project_id, pipeline_name, my_data_inputs, my_params,my_tags, args.storage_size, pipeline_run_name,workflow_language)
+        elif input_form_type == "JSON":
+            #try:
+            get_cli_template_jsoninputform(my_api_key, project_id, pipeline_name, analysis_id ,my_tags, args.storage_size, pipeline_run_name,workflow_language)
+            #except:
+            #    print(f"Error: Could not create CLI template to requeue JSON-based pipeline")
 
 if __name__ == '__main__':
     main()
