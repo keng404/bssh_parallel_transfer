@@ -1,6 +1,6 @@
 # Requeue a pipeline run ICAv2
 
-The script ```relaunch_pipeline.py``` can also be run in a Docker container ```keng404/ica_pipeline_relaunch:0.0.2```. This script was developed in an environment where python >= 3.9.
+The script ```relaunch_pipeline.py``` can also be run in a Docker container ```keng404/ica_pipeline_relaunch:0.0.3```. This script was developed in an environment where python >= 3.9.
 
 **25-Aug-2025** --- now supports JSON inputform based pipelines and can create API and CLI templates
 
